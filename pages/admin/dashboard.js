@@ -5,7 +5,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import { getPosts } from '../../services';
-import withAuth from '../../utils/withAuth';
+import withAuth from '../../utils/auth';
 
 const Dashboard = () => {
   const [user, setUser] = useState(null);
