@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
-import { getCategories } from '../../../services';
-import { getCurrentUser } from '../../../utils/auth';
+import { getCategories, getPostDetails } from '../../../../services';
+import { getCurrentUser } from '../../../../utils/auth';
 
-export default function NewPost() {
+export default function EditPost() {
   const [isLoading, setIsLoading] = useState(true);
   const [categories, setCategories] = useState([]);
   const [formData, setFormData] = useState({
@@ -18,6 +18,7 @@ export default function NewPost() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
+  const { slug } = router.query;
 
   useEffect(() => {
     // Check if user is authenticated
@@ -27,17 +28,33 @@ export default function NewPost() {
       return;
     }
 
-    fetchCategories();
-  }, [router]);
+    if (slug) {
+      fetchPostAndCategories();
+    }
+  }, [router, slug]);
 
-  const fetchCategories = async () => {
+  const fetchPostAndCategories = async () => {
     try {
-      const allCategories = await getCategories();
+      const [allCategories, postData] = await Promise.all([
+        getCategories(),
+        getPostDetails(slug)
+      ]);
+
       setCategories(allCategories);
+      
+      // Transform post data into form data
+      setFormData({
+        title: postData.title || '',
+        excerpt: postData.excerpt || '',
+        content: postData.content?.raw?.children?.[0]?.children?.[0]?.text || '',
+        featuredImage: postData.featuredImage?.url || '',
+        selectedCategories: postData.category?.map(cat => cat.slug) || []
+      });
+      
       setIsLoading(false);
     } catch (err) {
-      console.error('Error fetching categories:', err);
-      setError('Failed to load categories. Please try again.');
+      console.error('Error fetching data:', err);
+      setError('Failed to load post data. Please try again.');
       setIsLoading(false);
     }
   };
@@ -76,13 +93,13 @@ export default function NewPost() {
       console.log('Submit form data:', formData);
       
       // Mock success - in a real app you would call your API
-      // await createPost(formData);
+      // await updatePost(slug, formData);
       
-      alert('This is a demo. In a real application, this would create a new post.');
+      alert('This is a demo. In a real application, this would update the post.');
       router.push('/admin/posts');
     } catch (err) {
-      console.error('Error creating post:', err);
-      setError('Failed to create post. Please try again.');
+      console.error('Error updating post:', err);
+      setError('Failed to update post. Please try again.');
       setIsSubmitting(false);
     }
   };
@@ -92,7 +109,7 @@ export default function NewPost() {
       <div className="container mx-auto px-10 mb-8">
         <div className="bg-white shadow-lg rounded-lg p-8 pb-12 mb-8">
           <div className="text-center">
-            <p className="text-lg">Loading...</p>
+            <p className="text-lg">Loading post...</p>
           </div>
         </div>
       </div>
@@ -102,12 +119,12 @@ export default function NewPost() {
   return (
     <div className="container mx-auto px-10 mb-8">
       <Head>
-        <title>Create New Post - Rivergrove 1st Ward</title>
+        <title>Edit Post - Rivergrove 1st Ward</title>
       </Head>
 
       <div className="bg-white shadow-lg rounded-lg p-8 pb-12 mb-8">
         <div className="flex justify-between items-center border-b pb-4 mb-8">
-          <h1 className="text-3xl font-semibold">Create New Post</h1>
+          <h1 className="text-3xl font-semibold">Edit Post</h1>
           <Link href="/admin/posts">
             <span className="text-blue-500 hover:text-blue-700 cursor-pointer">
               Back to Posts
@@ -161,6 +178,15 @@ export default function NewPost() {
               className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
               required
             />
+            {formData.featuredImage && (
+              <div className="mt-2">
+                <img 
+                  src={formData.featuredImage} 
+                  alt="Featured image preview" 
+                  className="w-32 h-32 object-cover" 
+                />
+              </div>
+            )}
           </div>
           
           <div className="mb-6">
@@ -205,7 +231,7 @@ export default function NewPost() {
               className="transition duration-500 transform hover:-translate-y-1 inline-block bg-pink-600 text-lg font-medium rounded-full text-white px-8 py-3 cursor-pointer"
               disabled={isSubmitting}
             >
-              {isSubmitting ? 'Saving...' : 'Create Post'}
+              {isSubmitting ? 'Saving...' : 'Update Post'}
             </button>
           </div>
         </form>
