@@ -50,7 +50,7 @@ export default function NewPost() {
         }
       }
     } catch (e) {
-      console.error('Failed to extract project ID:', e);
+      console.error('Failed to extract project ID', e);
     }
     
     setDebugInfo({
