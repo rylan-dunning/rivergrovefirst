@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
-import { getCategories, createPost, getAuthorIdByEmail } from '../../../services';
+import { getCategories, createPost, getAuthors, debugImageConnection, testImageConnectionSyntax, publishPost, testExistingAssetConnection } from '../../../services';
 import { uploadImage } from '../../../services/uploadService';
 import { getCurrentUser } from '../../../utils/auth';
 
@@ -15,7 +15,9 @@ export default function NewPost() {
     content: '',
     featuredImage: null,
     featuredImageUrl: '',
-    selectedCategories: []
+    selectedCategories: [],
+    selectedAuthor: '',
+    featuredPost: false
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -23,7 +25,100 @@ export default function NewPost() {
   const [imagePreview, setImagePreview] = useState('');
   const [debugInfo, setDebugInfo] = useState(null);
   const [showDebug, setShowDebug] = useState(false);
+  const [authors, setAuthors] = useState([]);
   const router = useRouter();
+
+  //////////////////////////test
+// Replace your test function with this updated version that includes slug and content
+
+const testCreatePostStepByStep = async () => {
+    console.log('=== STEP BY STEP MUTATION TEST ===');
+    
+    const contentEndpoint = process.env.NEXT_PUBLIC_GRAPHCMS_ENDPOINT;
+    const authToken = process.env.NEXT_PUBLIC_GRAPHCMS_TOKEN;
+    
+    const apiEndpoint = contentEndpoint.includes('cdn.hygraph.com') 
+      ? contentEndpoint.replace('us-west-2.cdn.hygraph.com/content', 'api-us-west-2.hygraph.com/v2')
+      : contentEndpoint;
+    
+    // Test 1: Minimal post creation with ALL required fields
+    console.log('Test 1: Minimal post creation with required fields...');
+    const minimalTest = {
+      query: `
+        mutation CreateMinimalPost(
+          $title: String!,
+          $slug: String!,
+          $excerpt: String!,
+          $content: RichTextAST!,
+          $featuredPost: Boolean!,
+          $authorId: ID!
+        ) {
+          createPost(
+            data: {
+              title: $title,
+              slug: $slug,
+              excerpt: $excerpt,
+              content: { 
+                json: $content 
+              },
+              featuredPost: $featuredPost,
+              author: { 
+                connect: { id: $authorId } 
+              }
+            }
+          ) {
+            id
+            slug
+            title
+          }
+        }
+      `,
+      variables: {
+        title: "Test Minimal Post",
+        slug: "test-minimal-post-" + Date.now(),
+        excerpt: "Test excerpt",
+        content: {
+          children: [
+            {
+              type: 'paragraph',
+              children: [
+                {
+                  text: 'Test content',
+                },
+              ],
+            },
+          ],
+        },
+        featuredPost: false,
+        authorId: "cm3m8gk8tpsie06myl2t8ulas"
+      }
+    };
+    
+    try {
+      const response = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify(minimalTest)
+      });
+      
+      const result = await response.json();
+      console.log('Minimal test result:', result);
+      
+      if (result.errors) {
+        console.error('❌ Minimal test failed:', result.errors);
+      } else {
+        console.log('✅ Minimal test worked! Post creation is working');
+      }
+    } catch (error) {
+      console.error('❌ Minimal test error:', error);
+    }
+    
+    console.log('=== STEP BY STEP TEST COMPLETE ===');
+  };
+  //////////////////////////
 
   useEffect(() => {
     // Check if user is authenticated
@@ -32,9 +127,9 @@ export default function NewPost() {
       router.push('/admin');
       return;
     }
-    
+
     setUser(currentUser);
-    fetchCategories();
+    fetchCategoriesAndAuthors();
     
     // Check environment variables and show them in debug panel
     const graphcmsEndpoint = process.env.NEXT_PUBLIC_GRAPHCMS_ENDPOINT;
@@ -50,7 +145,7 @@ export default function NewPost() {
         }
       }
     } catch (e) {
-      console.error('Failed to extract project ID: ', e);
+      console.error('Failed to extract project ID:', e);
     }
     
     setDebugInfo({
@@ -73,34 +168,20 @@ export default function NewPost() {
     
   }, [router]);
 
-  const fetchCategories = async () => {
+  const fetchCategoriesAndAuthors = async () => {
     try {
-      const allCategories = await getCategories();
+      const [allCategories, allAuthors] = await Promise.all([
+        getCategories(),
+        getAuthors()
+      ]);
+      
       setCategories(allCategories);
+      setAuthors(allAuthors);
       setIsLoading(false);
-      
-      // Add categories to debug info
-      setDebugInfo(prev => ({
-        ...prev,
-        categories: {
-          count: allCategories.length,
-          items: allCategories.map(c => c.name)
-        }
-      }));
-      
     } catch (err) {
-      console.error('Error fetching categories:', err);
-      setError('Failed to load categories. Please try again.');
+      console.error('Error fetching data:', err);
+      setError('Failed to load data. Please try again.');
       setIsLoading(false);
-      
-      setDebugInfo(prev => ({
-        ...prev,
-        errors: [...(prev.errors || []), {
-          source: 'fetchCategories',
-          message: err.message,
-          stack: err.stack
-        }]
-      }));
     }
   };
 
@@ -109,6 +190,13 @@ export default function NewPost() {
     setFormData({
       ...formData,
       [name]: value
+    });
+  };
+
+  const handleAuthorChange = (e) => {
+    setFormData({
+      ...formData,
+      selectedAuthor: e.target.value
     });
   };
 
@@ -154,161 +242,132 @@ export default function NewPost() {
     });
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    setError('');
+  // getUserEmail
+  // Add this function to your new post page to properly get the user's email
+
+const getUserEmail = async () => {
+    console.log('=== GETTING USER EMAIL ===');
     
-    // Log action to debug
-    setDebugInfo(prev => ({
-      ...prev,
-      actions: [...(prev.actions || []), {
-        type: 'handleSubmit',
-        timestamp: new Date().toISOString(),
-        formData: { 
-          title: formData.title,
-          excerpt: formData.excerpt,
-          contentLength: formData.content.length,
-          selectedCategories: formData.selectedCategories,
-          featuredImage: formData.featuredImage ? {
-            name: formData.featuredImage.name,
-            type: formData.featuredImage.type,
-            size: `${Math.round(formData.featuredImage.size / 1024)} KB`
-          } : null
-        }
-      }]
-    }));
-    
-    try {
-      // 1. Upload image first if provided
-      let featuredImageId = null;
-      
-      if (formData.featuredImage) {
-        try {
-          setDebugInfo(prev => ({
-            ...prev,
-            actions: [...(prev.actions || []), {
-              type: 'uploadImage',
-              timestamp: new Date().toISOString(),
-              file: {
-                name: formData.featuredImage.name,
-                type: formData.featuredImage.type,
-                size: `${Math.round(formData.featuredImage.size / 1024)} KB`
-              }
-            }]
-          }));
-          
-          const uploadResult = await uploadImage(formData.featuredImage);
-          featuredImageId = uploadResult.id;
-          
-          setDebugInfo(prev => ({
-            ...prev,
-            actions: [...(prev.actions || []), {
-              type: 'uploadImageSuccess',
-              timestamp: new Date().toISOString(),
-              result: uploadResult
-            }]
-          }));
-        } catch (uploadError) {
-          setDebugInfo(prev => ({
-            ...prev,
-            errors: [...(prev.errors || []), {
-              source: 'uploadImage',
-              message: uploadError.message,
-              stack: uploadError.stack
-            }]
-          }));
-          throw uploadError;
-        }
-      } else {
-        setError('Please upload an image file.');
-        setIsSubmitting(false);
-        return;
-      }
-      
-      // 2. Get author ID based on the current user
-      const userEmail = user.attributes?.email || 'default@example.com';
-      
-      setDebugInfo(prev => ({
-        ...prev,
-        actions: [...(prev.actions || []), {
-          type: 'getAuthorIdByEmail',
-          timestamp: new Date().toISOString(),
-          email: userEmail
-        }]
-      }));
-      
-      const authorId = await getAuthorIdByEmail(userEmail);
-      
-      setDebugInfo(prev => ({
-        ...prev,
-        actions: [...(prev.actions || []), {
-          type: 'getAuthorIdByEmailSuccess',
-          timestamp: new Date().toISOString(),
-          authorId: authorId
-        }]
-      }));
-      
-      if (!authorId) {
-        setError('Author not found. Please make sure an author with your email exists in Hygraph.');
-        setIsSubmitting(false);
-        return;
-      }
-      
-      // 3. Create the post
-      setDebugInfo(prev => ({
-        ...prev,
-        actions: [...(prev.actions || []), {
-          type: 'createPost',
-          timestamp: new Date().toISOString(),
-          postData: {
-            title: formData.title,
-            excerpt: formData.excerpt,
-            contentLength: formData.content.length,
-            featuredImageId,
-            categories: formData.selectedCategories,
-            authorId
-          }
-        }]
-      }));
-      
-      const result = await createPost({
-        title: formData.title,
-        excerpt: formData.excerpt,
-        content: formData.content,
-        featuredImageId,
-        categories: formData.selectedCategories,
-        authorId
-      });
-      
-      setDebugInfo(prev => ({
-        ...prev,
-        actions: [...(prev.actions || []), {
-          type: 'createPostSuccess',
-          timestamp: new Date().toISOString(),
-          result
-        }]
-      }));
-      
-      console.log('Post created:', result);
-      
-      // 4. Redirect to the posts list
-      router.push('/admin/posts');
-    } catch (err) {
-      console.error('Error creating post:', err);
-      setError(`Failed to create post: ${err.message}`);
-      setIsSubmitting(false);
-      
-      setDebugInfo(prev => ({
-        ...prev,
-        errors: [...(prev.errors || []), {
-          source: 'handleSubmit',
-          message: err.message,
-          stack: err.stack
-        }]
-      }));
+    const currentUser = getCurrentUser();
+    if (!currentUser) {
+      throw new Error('No user logged in');
     }
+    
+    console.log('Current user:', currentUser);
+    console.log('Username:', currentUser.username);
+    
+    // Try to get email from attributes first
+    if (currentUser.attributes && currentUser.attributes.email) {
+      console.log('Found email in attributes:', currentUser.attributes.email);
+      return currentUser.attributes.email;
+    }
+    
+    // If not in attributes, try to get it from the session
+    return new Promise((resolve, reject) => {
+      currentUser.getSession((err, session) => {
+        if (err) {
+          console.error('Session error:', err);
+          reject(err);
+          return;
+        }
+        
+        console.log('Session:', session);
+        
+        if (session && session.idToken && session.idToken.payload) {
+          const payload = session.idToken.payload;
+          console.log('Token payload:', payload);
+          
+          if (payload.email) {
+            console.log('Found email in token payload:', payload.email);
+            resolve(payload.email);
+            return;
+          }
+        }
+        
+        // If we still can't find email, get user attributes explicitly
+        currentUser.getUserAttributes((attrErr, attributes) => {
+          if (attrErr) {
+            console.error('Error getting attributes:', attrErr);
+            reject(attrErr);
+            return;
+          }
+          
+          console.log('User attributes:', attributes);
+          
+          const emailAttr = attributes.find(attr => attr.Name === 'email');
+          if (emailAttr) {
+            console.log('Found email in user attributes:', emailAttr.Value);
+            resolve(emailAttr.Value);
+          } else {
+            reject(new Error('No email found in user attributes'));
+          }
+        });
+      });
+    });
   };
+
+// Replace your handleSubmit with this clean, working version:
+
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setIsSubmitting(true);
+  setError('');
+  
+  try {
+    // 1. Upload image first if provided
+    let featuredImageId = null;
+    
+    if (formData.featuredImage) {
+      try {
+        console.log('🖼️ Starting image upload...');
+        const uploadResult = await uploadImage(formData.featuredImage);
+        featuredImageId = uploadResult.id;
+        console.log('✅ Image uploaded successfully!');
+        console.log('Image ID:', featuredImageId);
+        
+      } catch (uploadError) {
+        console.error('❌ Image upload failed:', uploadError);
+        setError(`Image upload failed: ${uploadError.message}`);
+        setIsSubmitting(false);
+        return;
+      }
+    } else {
+      setError('Please upload an image file.');
+      setIsSubmitting(false);
+      return;
+    }
+    
+    // 2. Check if author is selected
+    if (!formData.selectedAuthor) {
+      setError('Please select an author.');
+      setIsSubmitting(false);
+      return;
+    }
+    
+    // 3. Create the post
+    console.log('📝 Creating post with image ID:', featuredImageId);
+    const result = await createPost({
+      title: formData.title,
+      excerpt: formData.excerpt,
+      content: formData.content,
+      featuredImageId,
+      categories: formData.selectedCategories,
+      authorId: formData.selectedAuthor,
+      featuredPost: formData.featuredPost || false
+    });
+    
+    console.log('✅ Post created successfully:', result);
+    
+    // 4. Success! Redirect to posts list
+    router.push('/admin/posts');
+    
+  } catch (err) {
+    console.error('❌ Error creating post:', err);
+    setError(`Failed to create post: ${err.message}`);
+    setIsSubmitting(false);
+  }
+};
+
 
   if (isLoading) {
     return (
@@ -338,6 +397,31 @@ export default function NewPost() {
             >
               {showDebug ? 'Hide Debug' : 'Show Debug'}
             </button>
+
+            <button 
+            type="button"
+            onClick={testExistingAssetConnection}
+            className="text-sm bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600"
+          >
+            Test Existing Asset
+          </button>
+
+            <button 
+            type="button"
+            onClick={debugImageConnection}
+            className="text-sm bg-pink-500 text-white px-4 py-2 rounded hover:bg-pink-600"
+            >
+            Debug Image Connection
+            </button>
+
+            <button 
+            type="button"
+            onClick={testImageConnectionSyntax}
+            className="text-sm bg-cyan-500 text-white px-4 py-2 rounded hover:bg-pink-600"
+            >
+            Test Image Connection
+            </button>
+
             <Link href="/admin/posts">
               <span className="text-blue-500 hover:text-blue-700 cursor-pointer">
                 Back to Posts
@@ -446,6 +530,46 @@ export default function NewPost() {
               required
             ></textarea>
           </div>
+
+
+            <div className="mb-6">
+            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="author">
+                Author
+            </label>
+            <select
+                id="author"
+                name="author"
+                value={formData.selectedAuthor}
+                onChange={handleAuthorChange}
+                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                required
+            >
+                <option value="">Select an author...</option>
+                {authors.map(author => (
+                <option key={author.id} value={author.id}>
+                    {author.name}
+                </option>
+                ))}
+            </select>
+            </div>
+
+            <div className="mb-6">
+            <label className="flex items-center">
+                <input
+                type="checkbox"
+                name="featuredPost"
+                checked={formData.featuredPost || false}
+                onChange={(e) => setFormData({
+                    ...formData,
+                    featuredPost: e.target.checked
+                })}
+                className="mr-2"
+                />
+                <span className="text-gray-700 text-sm font-bold">Featured Post</span>
+            </label>
+            <p className="text-sm text-gray-500 mt-1">Check this to make this a featured post</p>
+            </div>
+
           
           <div className="flex items-center justify-between">
             <button

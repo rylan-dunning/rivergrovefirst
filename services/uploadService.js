@@ -1,84 +1,171 @@
-// services/uploadService.js - Improved version
+// Replace your uploadService.js with this version that auto-publishes:
+
 export const uploadImage = async (file) => {
-    if (!file) return null;
+  if (!file) {
+    throw new Error('No file provided');
+  }
+  
+  console.log('Starting NEW asset system upload...');
+  console.log('File:', { name: file.name, type: file.type, size: `${Math.round(file.size / 1024)} KB` });
+  
+  const contentEndpoint = process.env.NEXT_PUBLIC_GRAPHCMS_ENDPOINT;
+  const authToken = process.env.NEXT_PUBLIC_GRAPHCMS_TOKEN;
+  
+  if (!contentEndpoint || !authToken) {
+    throw new Error('Missing environment variables');
+  }
+  
+  // Convert CDN endpoint to regular API endpoint
+  const apiEndpoint = contentEndpoint.replace('us-west-2.cdn.hygraph.com/content', 'api-us-west-2.hygraph.com/v2');
+  
+  console.log('API endpoint:', apiEndpoint);
+  
+  try {
+    // Step 1: Create asset via GraphQL mutation to get upload URL
+    console.log('Step 1: Creating asset entry...');
     
-    // The correct Hygraph upload endpoint format
-    const projectId = getProjectIdFromEndpoint(process.env.NEXT_PUBLIC_GRAPHCMS_ENDPOINT);
+    const createAssetMutation = {
+      query: `
+        mutation CreateAsset($fileName: String) {
+          createAsset(data: { fileName: $fileName }) {
+            id
+            url
+            upload {
+              status
+              expiresAt
+              error {
+                code
+                message
+              }
+              requestPostData {
+                url
+                date
+                key
+                signature
+                algorithm
+                policy
+                credential
+                securityToken
+              }
+            }
+          }
+        }
+      `,
+      variables: {
+        fileName: file.name
+      }
+    };
     
-    if (!projectId) {
-      throw new Error('Could not determine project ID from the API endpoint');
+    const createResponse = await fetch(apiEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+      },
+      body: JSON.stringify(createAssetMutation)
+    });
+    
+    if (!createResponse.ok) {
+      const errorText = await createResponse.text();
+      throw new Error(`Failed to create asset: ${createResponse.status} ${errorText}`);
     }
     
-    // This is the correct format for the upload URL
-    const uploadUrl = `https://api-us-west-2.hygraph.com/v2/${projectId}/upload`;
+    const createResult = await createResponse.json();
+    console.log('Create asset result:', createResult);
     
-    const authToken = process.env.NEXT_PUBLIC_GRAPHCMS_TOKEN;
-    
-    if (!authToken) {
-      throw new Error('Auth token not available. Please check your environment variables.');
+    if (createResult.errors) {
+      throw new Error(`GraphQL errors: ${JSON.stringify(createResult.errors)}`);
     }
     
-    console.log('Uploading image to:', uploadUrl);
+    const asset = createResult.data.createAsset;
+    const uploadData = asset.upload;
     
-    // Create FormData
+    if (!uploadData || !uploadData.requestPostData) {
+      throw new Error('No upload data received from Hygraph');
+    }
+    
+    // Step 2: Upload file to S3 using the provided data
+    console.log('Step 2: Uploading file to S3...');
+    
+    const postData = uploadData.requestPostData;
     const formData = new FormData();
-    formData.append('fileUpload', file);
+    
+    // Add all the required S3 fields in the correct order
+    formData.append('X-Amz-Date', postData.date);
+    formData.append('key', postData.key);
+    formData.append('X-Amz-Signature', postData.signature);
+    formData.append('X-Amz-Algorithm', postData.algorithm);
+    formData.append('policy', postData.policy);
+    formData.append('X-Amz-Credential', postData.credential);
+    if (postData.securityToken) {
+      formData.append('X-Amz-Security-Token', postData.securityToken);
+    }
+    // File must be last
+    formData.append('file', file);
+    
+    const uploadResponse = await fetch(postData.url, {
+      method: 'POST',
+      body: formData
+    });
+    
+    console.log('S3 upload response:', uploadResponse.status, uploadResponse.statusText);
+    
+    if (!uploadResponse.ok) {
+      const errorText = await uploadResponse.text();
+      throw new Error(`S3 upload failed: ${uploadResponse.status} ${errorText}`);
+    }
+    
+    // Step 3: Try to publish the asset immediately
+    console.log('Step 3: Publishing asset...');
+    
+    const publishMutation = {
+      query: `
+        mutation PublishAsset($id: ID!) {
+          publishAsset(where: { id: $id }, to: PUBLISHED) {
+            id
+            stage
+          }
+        }
+      `,
+      variables: {
+        id: asset.id
+      }
+    };
     
     try {
-      // Make the request
-      const response = await fetch(uploadUrl, {
+      const publishResponse = await fetch(apiEndpoint, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${authToken}`,
-          // Don't set Content-Type header when using FormData
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
         },
-        body: formData,
+        body: JSON.stringify(publishMutation)
       });
       
-      // Log the full response for debugging
-      console.log('Upload response status:', response.status);
-      console.log('Upload response status text:', response.statusText);
-      
-      if (!response.ok) {
-        let errorInfo;
-        try {
-          errorInfo = await response.text();
-        } catch (e) {
-          errorInfo = 'Could not parse error response';
+      if (publishResponse.ok) {
+        const publishResult = await publishResponse.json();
+        if (!publishResult.errors) {
+          console.log('✅ Asset published successfully!');
+        } else {
+          console.warn('⚠️ Asset publish had errors:', publishResult.errors);
         }
-        
-        console.error('Upload failed details:', errorInfo);
-        throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
+      } else {
+        console.warn('⚠️ Asset publish request failed:', publishResponse.status);
       }
-      
-      const data = await response.json();
-      console.log('Upload successful:', data);
-      
-      // Return the URL and ID of the uploaded image
-      return {
-        url: data.url,
-        id: data.id
-      };
-    } catch (error) {
-      console.error('Error uploading image:', error);
-      throw error;
-    }
-  };
-  
-  // Helper function to extract project ID from the API endpoint
-  function getProjectIdFromEndpoint(endpoint) {
-    if (!endpoint) return null;
-    
-    // Try to extract the project ID from the endpoint URL
-    // Example: https://api-us-west-2.hygraph.com/v2/clfg7gfds0001uh015zxg8jf9/master
-    try {
-      const matches = endpoint.match(/\/v2\/([^\/]+)/);
-      if (matches && matches[1]) {
-        return matches[1];
-      }
-    } catch (e) {
-      console.error('Failed to extract project ID:', e);
+    } catch (publishError) {
+      console.warn('⚠️ Asset publishing failed, but upload succeeded:', publishError.message);
     }
     
-    return null;
+    console.log('✅ Upload process complete!');
+    
+    // Return the asset info
+    return {
+      id: asset.id,
+      url: asset.url
+    };
+    
+  } catch (error) {
+    console.error('Upload error:', error);
+    throw error;
   }
+};

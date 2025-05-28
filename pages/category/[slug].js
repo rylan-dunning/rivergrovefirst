@@ -1,4 +1,5 @@
-// pages/category/[slug].js
+// Replace your pages/category/[slug].js with this corrected version
+
 import React from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
