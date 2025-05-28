@@ -6,9 +6,17 @@ import { getCategories } from '../services'
 const Header = () => {
     const [categories, setCategories] = useState([]);
     
-    useEffect(() => {
-        getCategories().then((newCategories) => setCategories(newCategories))
+    // Define which categories should appear in the header nav
+    const headerCategories = ['ward', 'activities']; // Use the slugs from Hygraph if you want other categories on the header
     
+    useEffect(() => {
+        getCategories().then((newCategories) => {
+            // Filter categories to only show the ones we want in header
+            const filteredCategories = newCategories.filter(category => 
+                headerCategories.includes(category.slug)
+            );
+            setCategories(filteredCategories);
+        });
     }, [])
 
     return (
