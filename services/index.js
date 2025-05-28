@@ -1,25 +1,45 @@
 // services/index.js - Updated for Legacy Asset System
 import { request, gql } from 'graphql-request';
 
-// Use content API for both read and write operations (legacy system)
-const contentAPI = process.env.NEXT_PUBLIC_GRAPHCMS_ENDPOINT;
+const getConfig = (key) => {
+  // Try runtime config first, fall back to env vars for development
+  if (typeof window !== 'undefined' && window.CONFIG) {
+    return window.CONFIG[key];
+  }
+  
+  // Fallback to environment variables for development
+  switch (key) {
+    case 'GRAPHCMS_ENDPOINT':
+      return process.env.NEXT_PUBLIC_GRAPHCMS_ENDPOINT;
+    case 'GRAPHCMS_TOKEN':
+      return process.env.NEXT_PUBLIC_GRAPHCMS_TOKEN;
+    case 'USER_POOL_ID':
+      return process.env.NEXT_PUBLIC_USER_POOL_ID;
+    case 'USER_POOL_CLIENT_ID':
+      return process.env.NEXT_PUBLIC_USER_POOL_CLIENT_ID;
+    default:
+      return null;
+  }
+};
 
-// Auth token
-const authToken = process.env.NEXT_PUBLIC_GRAPHCMS_TOKEN;
+// Use the config helper
+const contentAPI = getConfig('GRAPHCMS_ENDPOINT');
+const authToken = getConfig('GRAPHCMS_TOKEN');
 
 // Headers with authentication
 const authHeaders = {
   Authorization: `Bearer ${authToken}`
 };
 
-// Debug function to check configuration
 const debugConfig = () => {
   console.log('API Configuration:', {
     contentAPI: contentAPI ? '✓ Set' : '✗ Missing',
     authToken: authToken ? '✓ Set' : '✗ Missing',
     contentAPIPreview: contentAPI ? contentAPI.substring(0, 50) + '...' : 'Not set',
+    configSource: typeof window !== 'undefined' && window.CONFIG ? 'Runtime Config' : 'Environment Variables'
   });
 };
+
 
 // Read operations
 export const getPosts = async () => {

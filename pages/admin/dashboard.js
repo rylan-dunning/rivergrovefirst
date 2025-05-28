@@ -1,6 +1,5 @@
 // pages/admin/dashboard.js
 import React, { useState, useEffect } from 'react';
-import { Auth } from 'aws-amplify';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';

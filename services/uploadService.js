@@ -1,5 +1,21 @@
 // Replace your uploadService.js with this version that auto-publishes:
 
+const getConfig = (key) => {
+  if (typeof window !== 'undefined' && window.CONFIG) {
+    return window.CONFIG[key];
+  }
+  
+  // Fallback to environment variables for development
+  switch (key) {
+    case 'GRAPHCMS_ENDPOINT':
+      return process.env.NEXT_PUBLIC_GRAPHCMS_ENDPOINT;
+    case 'GRAPHCMS_TOKEN':
+      return process.env.NEXT_PUBLIC_GRAPHCMS_TOKEN;
+    default:
+      return null;
+  }
+};
+
 export const uploadImage = async (file) => {
   if (!file) {
     throw new Error('No file provided');
@@ -8,18 +24,17 @@ export const uploadImage = async (file) => {
   console.log('Starting NEW asset system upload...');
   console.log('File:', { name: file.name, type: file.type, size: `${Math.round(file.size / 1024)} KB` });
   
-  const contentEndpoint = process.env.NEXT_PUBLIC_GRAPHCMS_ENDPOINT;
-  const authToken = process.env.NEXT_PUBLIC_GRAPHCMS_TOKEN;
+  const contentEndpoint = getConfig('GRAPHCMS_ENDPOINT');
+  const authToken = getConfig('GRAPHCMS_TOKEN');
   
   if (!contentEndpoint || !authToken) {
-    throw new Error('Missing environment variables');
+    throw new Error('Missing configuration - check config.js file');
   }
   
   // Convert CDN endpoint to regular API endpoint
   const apiEndpoint = contentEndpoint.replace('us-west-2.cdn.hygraph.com/content', 'api-us-west-2.hygraph.com/v2');
   
   console.log('API endpoint:', apiEndpoint);
-  
   try {
     // Step 1: Create asset via GraphQL mutation to get upload URL
     console.log('Step 1: Creating asset entry...');

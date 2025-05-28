@@ -4,8 +4,6 @@ const nextConfig = {
   images: {
     unoptimized: true, 
   },
-  // Add this for Amplify
-  trailingSlash: true,
 };
 
 export default nextConfig;
