@@ -59,7 +59,7 @@ export default function AdminPage() {
     return (
       <div className="container mx-auto px-10 mb-8">
         <Head>
-          <title>Admin Login - Rivergrove 1st Ward</title>
+          <title>Admin Login</title>
         </Head>
         <div className="bg-white shadow-lg rounded-lg p-8 pb-12 mb-8">
           <h1 className="text-3xl mb-8 font-semibold border-b pb-4">Admin Login</h1>
