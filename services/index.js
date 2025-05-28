@@ -249,143 +249,6 @@ export const getAuthors = async () => {
 };
 
 
-
-
-
-// ERROR HANDLING
-
-
-
-// Add this test function to try different image connection syntaxes
-
-export const testImageConnectionSyntax = async () => {
-  console.log('=== TESTING IMAGE CONNECTION SYNTAX ===');
-  
-  const contentEndpoint = process.env.NEXT_PUBLIC_GRAPHCMS_ENDPOINT;
-  const authToken = process.env.NEXT_PUBLIC_GRAPHCMS_TOKEN;
-  
-  const apiEndpoint = contentEndpoint.includes('cdn.hygraph.com') 
-    ? contentEndpoint.replace('us-west-2.cdn.hygraph.com/content', 'api-us-west-2.hygraph.com/v2')
-    : contentEndpoint;
-  
-  // Use a known working image ID from your previous uploads
-  const testImageId = "cmb6xvo7zelus07lqdweuza2w"; // Replace with your actual image ID
-  
-  const testMutation = {
-    query: `
-      mutation TestImageConnection(
-        $title: String!,
-        $slug: String!,
-        $excerpt: String!,
-        $content: RichTextAST!,
-        $featuredImageId: ID!,
-        $featuredPost: Boolean!,
-        $authorId: ID!
-      ) {
-        createPost(
-          data: {
-            title: $title,
-            slug: $slug,
-            excerpt: $excerpt,
-            content: $content,
-            featuredImage: { 
-              connect: { id: $featuredImageId } 
-            },
-            featuredPost: $featuredPost,
-            author: { 
-              connect: { id: $authorId } 
-            }
-          }
-        ) {
-          id
-          slug
-          title
-          featuredImage {
-            id
-            url
-          }
-        }
-      }
-    `,
-    variables: {
-      title: "Image Connection Test",
-      slug: "image-connection-test-" + Date.now(),
-      excerpt: "Testing image connection",
-      content: {
-        children: [
-          {
-            type: 'paragraph',
-            children: [
-              {
-                text: 'Testing if image connects properly'
-              }
-            ]
-          }
-        ]
-      },
-      featuredImageId: testImageId,
-      featuredPost: false,
-      authorId: "cm3m8gk8tpsie06myl2t8ulas"
-    }
-  };
-  
-  try {
-    const response = await fetch(apiEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`
-      },
-      body: JSON.stringify(testMutation)
-    });
-    
-    const result = await response.json();
-    console.log('Image connection test result:', result);
-    
-    if (result.errors) {
-      console.error('❌ Image connection failed:', result.errors);
-    } else if (result.data?.createPost?.featuredImage) {
-      console.log('✅ SUCCESS! Image connected properly');
-      console.log('Connected image:', result.data.createPost.featuredImage);
-    } else {
-      console.log('🤔 Post created but no featured image in response');
-    }
-  } catch (error) {
-    console.error('❌ Test failed:', error);
-  }
-  
-  console.log('=== IMAGE CONNECTION TEST COMPLETE ===');
-};
-
-// The error says "array of objects containing raw rich text values"
-// This suggests each array item should have a "raw" property
-
-// Add this debug function to your new post page to check if images are being connected properly
-
-export const debugImageConnection = async () => {
-  console.log('=== DEBUGGING IMAGE CONNECTION ===');
-  
-  // Check if the last post has a featured image
-  const posts = await getPosts();
-  const latestPost = posts[0]; // Should be newest first now
-  
-  console.log('Latest post:', latestPost.node.title);
-  console.log('Featured Image:', latestPost.node.featuredImage);
-  
-  if (!latestPost.node.featuredImage) {
-    console.error('❌ Latest post has no featured image!');
-    console.error('This means the image connection failed during post creation');
-  } else if (!latestPost.node.featuredImage.url) {
-    console.error('❌ Latest post has featured image but no URL');
-    console.error('Featured image object:', latestPost.node.featuredImage);
-  } else {
-    console.log('✅ Latest post has valid featured image');
-    console.log('Image URL:', latestPost.node.featuredImage.url);
-  }
-  
-  console.log('=== DEBUG COMPLETE ===');
-};
-
 // CREATE POST
 
 // Update your createPost function in services/index.js to include the featuredImage in the response:
@@ -642,108 +505,210 @@ export const publishAsset = async (assetId) => {
 };
 
 
+// UPDATE POST
+// Replace the updatePost function in services/index.js with this simplified version:
 
-
-
-///error handling for existing images
-
-// Add this test function to your new post page to test connecting existing assets
-
-export const testExistingAssetConnection = async () => {
-  console.log('=== TESTING EXISTING ASSET CONNECTION ===');
+export const updatePost = async (slug, postData) => {
+  if (!contentAPI) {
+    throw new Error('Content API endpoint not configured');
+  }
   
-  const contentEndpoint = process.env.NEXT_PUBLIC_GRAPHCMS_ENDPOINT;
-  const authToken = process.env.NEXT_PUBLIC_GRAPHCMS_TOKEN;
+  if (!authToken) {
+    throw new Error('Auth token not configured');
+  }
   
-  const apiEndpoint = contentEndpoint.includes('cdn.hygraph.com') 
-    ? contentEndpoint.replace('us-west-2.cdn.hygraph.com/content', 'api-us-west-2.hygraph.com/v2')
-    : contentEndpoint;
+  const { title, excerpt, content, featuredImageId, categories } = postData;
   
-  // Use an existing published asset ID from your working posts
-  const existingAssetId = "cm3m8olnzpw0n06my5338zbyp"; // From your Christmas post
-  
-  const testMutation = {
-    query: `
-      mutation TestExistingAsset(
-        $title: String!,
-        $slug: String!,
-        $excerpt: String!,
-        $content: RichTextAST!,
-        $featuredImageId: ID!,
-        $featuredPost: Boolean!,
-        $authorId: ID!
+  console.log('Updating post with slug:', slug);
+  console.log('Post data:', postData);
+
+  // Convert CDN endpoint to API endpoint if needed
+  const apiEndpoint = contentAPI.includes('cdn.hygraph.com') 
+    ? contentAPI.replace('us-west-2.cdn.hygraph.com/content', 'api-us-west-2.hygraph.com/v2')
+    : contentAPI;
+
+  // Simplified mutation - only update basic fields first
+  const mutation = gql`
+    mutation UpdatePost(
+      $slug: String!,
+      $title: String!,
+      $excerpt: String!,
+      $content: RichTextAST!
+    ) {
+      updatePost(
+        where: { slug: $slug }
+        data: {
+          title: $title,
+          excerpt: $excerpt,
+          content: $content
+        }
       ) {
-        createPost(
-          data: {
-            title: $title,
-            slug: $slug,
-            excerpt: $excerpt,
-            content: $content,
-            featuredImage: { 
-              connect: { id: $featuredImageId } 
-            },
-            featuredPost: $featuredPost,
-            author: { 
-              connect: { id: $authorId } 
-            }
-          }
-        ) {
+        id
+        slug
+        title
+        featuredImage {
           id
-          slug
-          title
-          featuredImage {
-            id
-            url
-          }
+          url
         }
       }
-    `,
-    variables: {
-      title: "Test Existing Asset",
-      slug: "test-existing-asset-" + Date.now(),
-      excerpt: "Testing existing asset connection",
-      content: {
-        children: [
-          {
-            type: 'paragraph',
-            children: [
-              {
-                text: 'Testing with existing published asset'
-              }
-            ]
-          }
-        ]
-      },
-      featuredImageId: existingAssetId,
-      featuredPost: false,
-      authorId: "cm3m8gk8tpsie06myl2t8ulas"
+    }
+  `;
+  
+  const variables = {
+    slug,
+    title,
+    excerpt,
+    content: {
+      children: [
+        {
+          type: 'paragraph',
+          children: [
+            {
+              text: content || ''
+            }
+          ]
+        }
+      ]
     }
   };
   
   try {
-    const response = await fetch(apiEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`
-      },
-      body: JSON.stringify(testMutation)
-    });
+    console.log('Making update request with variables:', JSON.stringify(variables, null, 2));
     
-    const result = await response.json();
-    console.log('Existing asset test result:', result);
+    const result = await request(apiEndpoint, mutation, variables, authHeaders);
     
-    if (result.errors) {
-      console.error('❌ Even existing asset failed:', result.errors);
-    } else if (result.data?.createPost?.featuredImage) {
-      console.log('✅ SUCCESS! Existing asset connected:', result.data.createPost.featuredImage);
-      console.log('This confirms connection syntax works with published assets');
-    } else {
-      console.log('🤔 Post created but no featured image connected');
+    console.log('Update result:', result);
+    
+    // If we have a featured image ID, update it separately
+    if (featuredImageId && result.updatePost) {
+      try {
+        const imageUpdateMutation = gql`
+          mutation UpdatePostImage($slug: String!, $featuredImageId: ID!) {
+            updatePost(
+              where: { slug: $slug }
+              data: {
+                featuredImage: { 
+                  connect: { id: $featuredImageId } 
+                }
+              }
+            ) {
+              id
+              featuredImage {
+                id
+                url
+              }
+            }
+          }
+        `;
+        
+        const imageResult = await request(apiEndpoint, imageUpdateMutation, { 
+          slug, 
+          featuredImageId 
+        }, authHeaders);
+        
+        console.log('Image update result:', imageResult);
+      } catch (imageError) {
+        console.error('Image update failed:', imageError);
+      }
     }
+    
+    // Replace just the category update section in your updatePost function with this:
+
+// Update categories separately if provided
+if (categories && categories.length > 0 && result.updatePost) {
+  try {
+    // Skip disconnect and just set the categories directly
+    const categoryUpdateMutation = gql`
+      mutation UpdatePostCategories($slug: String!, $categories: [CategoryWhereUniqueInput!]!) {
+        updatePost(
+          where: { slug: $slug }
+          data: {
+            category: { 
+              set: $categories 
+            }
+          }
+        ) {
+          id
+          category {
+            name
+            slug
+          }
+        }
+      }
+    `;
+    
+    const categoryResult = await request(apiEndpoint, categoryUpdateMutation, { 
+      slug, 
+      categories: categories.map(catSlug => ({ slug: catSlug }))
+    }, authHeaders);
+    
+    console.log('Category update result:', categoryResult);
+  } catch (categoryError) {
+    console.error('Category update failed:', categoryError);
+    // Don't throw - the main update succeeded
+  }
+}
+    
+    // Publish the updated post
+    if (result.updatePost && result.updatePost.id) {
+      try {
+        await publishPost(result.updatePost.id);
+        console.log('✅ Post updated and published successfully!');
+      } catch (publishError) {
+        console.error('⚠️ Post updated but failed to publish:', publishError);
+      }
+    }
+    
+    return result;
   } catch (error) {
-    console.error('❌ Test failed:', error);
+    console.error('Error updating post:', error);
+    if (error.response && error.response.errors) {
+      console.error('GraphQL errors:', JSON.stringify(error.response.errors, null, 2));
+    }
+    throw error;
+  }
+};
+
+// DELETE POST
+export const deletePost = async (slug) => {
+  if (!contentAPI) {
+    throw new Error('Content API endpoint not configured');
   }
   
-  console.log('=== EXISTING ASSET TEST COMPLETE ===');
+  if (!authToken) {
+    throw new Error('Auth token not configured');
+  }
+  
+  console.log('Deleting post with slug:', slug);
+
+  // Convert CDN endpoint to API endpoint if needed
+  const apiEndpoint = contentAPI.includes('cdn.hygraph.com') 
+    ? contentAPI.replace('us-west-2.cdn.hygraph.com/content', 'api-us-west-2.hygraph.com/v2')
+    : contentAPI;
+
+  const mutation = gql`
+    mutation DeletePost($slug: String!) {
+      deletePost(where: { slug: $slug }) {
+        id
+        slug
+        title
+      }
+    }
+  `;
+  
+  const variables = {
+    slug
+  };
+  
+  try {
+    const result = await request(apiEndpoint, mutation, variables, authHeaders);
+    console.log('✅ Post deleted successfully!');
+    return result;
+  } catch (error) {
+    console.error('Error deleting post:', error);
+    if (error.response && error.response.errors) {
+      console.error('GraphQL errors:', JSON.stringify(error.response.errors, null, 2));
+    }
+    throw error;
+  }
 };

@@ -398,29 +398,6 @@ const handleSubmit = async (e) => {
               {showDebug ? 'Hide Debug' : 'Show Debug'}
             </button>
 
-            <button 
-            type="button"
-            onClick={testExistingAssetConnection}
-            className="text-sm bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600"
-          >
-            Test Existing Asset
-          </button>
-
-            <button 
-            type="button"
-            onClick={debugImageConnection}
-            className="text-sm bg-pink-500 text-white px-4 py-2 rounded hover:bg-pink-600"
-            >
-            Debug Image Connection
-            </button>
-
-            <button 
-            type="button"
-            onClick={testImageConnectionSyntax}
-            className="text-sm bg-cyan-500 text-white px-4 py-2 rounded hover:bg-pink-600"
-            >
-            Test Image Connection
-            </button>
 
             <Link href="/admin/posts">
               <span className="text-blue-500 hover:text-blue-700 cursor-pointer">
