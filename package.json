@@ -10,7 +10,6 @@
     "export": "next build"
   },
   "dependencies": {
-    "amazon-cognito-identity-js": "^6.3.15",
     "graphql": "^16.10.0",
     "graphql-request": "^7.1.2",
     "html-react-parser": "^5.2.0",

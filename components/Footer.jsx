@@ -15,9 +15,6 @@ const Footer = () => {
           <Link href="/">
             <span className="text-white text-sm hover:text-pink-600 cursor-pointer transition duration-300">Home</span>
           </Link>
-          <Link href="/admin">
-            <span className="text-white text-sm hover:text-pink-600 cursor-pointer transition duration-300">Admin</span>
-          </Link>
         </div>
       </div>
     </footer>
